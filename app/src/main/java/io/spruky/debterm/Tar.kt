@@ -3,7 +3,9 @@ package io.spruky.debterm
 import android.system.Os
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStream
 
 /**
@@ -59,6 +61,24 @@ class Tar(private val ins: InputStream) {
 
     private fun chmod(f: File, mode: Int) {
         try { Os.chmod(f.absolutePath, if (mode == 0) 384 else mode and 4095) } catch (e: Exception) {}
+    }
+
+    /**
+     * A parent directory can be a symlink into usr/ whose target is not unpacked
+     * yet, and then both mkdirs() and open() fail with ENOENT. Resolve as far as
+     * the filesystem can and retry; if it still fails, name the entry — a bare
+     * FileNotFoundException says nothing about which file broke the install.
+     */
+    private fun sink(rel: String, f: File): FileOutputStream {
+        f.parentFile?.mkdirs()
+        try { return FileOutputStream(f) } catch (e: FileNotFoundException) {}
+        return try {
+            val c = File(f.canonicalPath)
+            c.parentFile?.mkdirs()
+            FileOutputStream(c)
+        } catch (e: IOException) {
+            throw IOException("cannot write " + rel + ": " + e)
+        }
     }
 
     private fun strip(p0: String): String {
@@ -121,8 +141,7 @@ class Tar(private val ins: InputStream) {
                     }
                 }
                 file -> {
-                    f.parentFile?.mkdirs()
-                    BufferedOutputStream(FileOutputStream(f), 1 shl 16).use { o ->
+                    BufferedOutputStream(sink(rel, f), 1 shl 16).use { o ->
                         var left = size
                         while (left > 0) {
                             val r = ins.read(buf, 0, minOf(left, buf.size.toLong()).toInt())

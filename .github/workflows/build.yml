@@ -91,14 +91,17 @@ jobs:
 
       # proot-distro stopped shipping rootfs tarballs, so we make our own from
       # the official arm64 image. gzip, not xz: GZIPInputStream is already in the
-      # platform, an xz decoder is not.
+      # platform, an xz decoder is not. The name must NOT end in .gz — aapt2
+      # gunzips such assets and strips the extension, so v1.0.3 shipped a
+      # 100 MB assets/rootfs.tar the app never looked for.
       - name: debian rootfs
         run: |
           set -eux
           mkdir -p app/src/main/assets
+          rm -f app/src/main/assets/rootfs.*
           docker pull -q --platform linux/arm64 debian:bookworm-slim
           cid=$(docker create --platform linux/arm64 debian:bookworm-slim)
-          docker export "$cid" | gzip -6 > app/src/main/assets/rootfs.tar.gz
+          docker export "$cid" | gzip -6 > app/src/main/assets/rootfs.bin
           docker rm -f "$cid"
           ls -lh app/src/main/assets
 
@@ -108,6 +111,11 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk debterm.apk
+          # The payload has to reach the device under the name the app opens, and
+          # gzipped: aapt2 rewrites .gz assets, so check the apk, not the source.
+          unzip -l debterm.apk | grep -E 'assets/|lib/arm64'
+          unzip -l debterm.apk | grep -q 'assets/rootfs.bin'
+          unzip -p debterm.apk assets/rootfs.bin | head -c2 | od -An -tx1 | grep -q '1f 8b'
           # Same code at targetSdk 28, in case a device still refuses to exec
           # under a modern target. Same package name, so it replaces the other.
           ./gradlew :app:assembleRelease --no-daemon -Pdebterm.targetSdk=28

@@ -17,8 +17,8 @@ android {
         // loader, which maps it instead of exec'ing it. Termux needs 28 because
         // it execs its data dir directly; we never do.
         targetSdk = (findProperty("debterm.targetSdk") as String?)?.toInt() ?: 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -30,9 +30,12 @@ android {
         }
     }
 
-    // The rootfs tarball is already gzipped — don't let aapt touch it.
+    // The rootfs is a gzip stream deliberately NOT named .gz: aapt2 gunzips any
+    // asset ending in .gz and drops the extension, which turned rootfs.tar.gz
+    // into assets/rootfs.tar in v1.0.3 and broke the installer. Kept
+    // uncompressed in the apk because the payload is already compressed.
     androidResources {
-        noCompress += listOf("gz", "tar")
+        noCompress += listOf("bin")
     }
 
     packaging {

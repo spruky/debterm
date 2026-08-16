@@ -6,6 +6,8 @@ import android.system.Os
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.PushbackInputStream
 import java.util.zip.GZIPInputStream
 
 /**
@@ -38,7 +40,30 @@ object Boot {
         s.append(" ").append(Build.SUPPORTED_ABIS.firstOrNull() ?: "?")
         s.append(if (miss.isEmpty()) ", libs ok" else ", MISSING " + miss.joinToString(" "))
         s.append(", rootfs ").append(bash(c) ?: "MISSING")
+        s.append(", asset ").append(try { asset(c) } catch (e: IOException) { "MISSING" })
         return s.append(NL).toString()
+    }
+
+    /**
+     * aapt2 gunzips every asset whose name ends in .gz and drops the extension,
+     * so what CI writes as rootfs.tar.gz can arrive in the apk as rootfs.tar.
+     * Never trust the name: find the asset by listing, and decide gzip-or-not
+     * from the magic bytes.
+     */
+    private fun asset(c: Context): String {
+        val all = try { c.assets.list("")?.toList() ?: emptyList<String>() } catch (e: IOException) { emptyList<String>() }
+        for (n in arrayOf("rootfs.bin", "rootfs.tar.gz", "rootfs.tar", "rootfs.gz")) if (all.contains(n)) return n
+        return all.firstOrNull { it.startsWith("rootfs") }
+            ?: throw IOException("no rootfs in the apk (assets: " + all.joinToString(" ") + ")")
+    }
+
+    private fun unwrap(a: InputStream): InputStream {
+        val b = PushbackInputStream(BufferedInputStream(a, 1 shl 16), 2)
+        val m = ByteArray(2)
+        val k = b.read(m, 0, 2)
+        if (k > 0) b.unread(m, 0, k)
+        val gz = k == 2 && m[0] == 0x1f.toByte() && m[1] == 0x8b.toByte()
+        return if (gz) GZIPInputStream(b, 1 shl 16) else b
     }
 
     fun install(c: Context, log: (String) -> Unit) {
@@ -46,10 +71,14 @@ object Boot {
         if (rfs.exists()) { log("clearing a partial install" + NL); rmr(rfs) }
         rfs.mkdirs()
         tmp(c).mkdirs()
-        log("unpacking debian bookworm" + NL)
+        // The merged-usr symlinks (/bin -> usr/bin) have to resolve before any
+        // file lands under them, so create their targets up front.
+        for (d in arrayOf("usr/bin", "usr/lib", "usr/sbin", "usr/lib64", "etc")) File(rfs, d).mkdirs()
+        val an = asset(c)
+        log("unpacking debian bookworm (" + an + ")" + NL)
         var n = 0
-        c.assets.open("rootfs.tar.gz").use { a ->
-            Tar(GZIPInputStream(BufferedInputStream(a, 1 shl 16), 1 shl 16)).extract(rfs) { k ->
+        c.assets.open(an).use { a ->
+            Tar(unwrap(a)).extract(rfs) { k ->
                 n = k
                 if (k % 500 == 0) log("  " + k + " files" + CR)
             }

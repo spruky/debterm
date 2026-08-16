@@ -49,8 +49,13 @@ paste, tap to bring the keyboard back.
 CI does everything (`.github/workflows/build.yml`): pulls `proot`, its ptrace
 loader and `libtalloc` from the Termux apt repo into `jniLibs` as `lib*.so`
 (that directory is the only exec-able one at runtime), compiles `pty.c` with NDK
-clang, exports the Debian rootfs with `docker export`, then
-`./gradlew :app:assembleRelease` and publishes a release.
+clang, exports the Debian rootfs with `docker export` into `assets/rootfs.bin`,
+then `./gradlew :app:assembleRelease` and publishes a release.
+
+`rootfs.bin` is a gzip stream, and the extension matters: aapt2 gunzips any
+asset whose name ends in `.gz` and drops the extension, so a `rootfs.tar.gz`
+source file reaches the device as `assets/rootfs.tar`. The build now asserts
+that the apk really contains a gzipped `assets/rootfs.bin`.
 
 The APK is signed with the debug key, so it installs but does not update over a
 differently-signed copy.
