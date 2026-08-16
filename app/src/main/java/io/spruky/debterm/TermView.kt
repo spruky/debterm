@@ -59,10 +59,15 @@ class TermView(ctx: Context) : View(ctx) {
 
     override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) = fit(w, h)
 
+    /** Padding follows the system bars, so re-fit when it changes. */
+    fun refit() = fit(width, height)
+
     private fun fit(w: Int, h: Int) {
-        if (w <= 0 || h <= 0 || cw <= 0f || lh <= 0f) return
-        val c = max(16, floor(w / cw).toInt())
-        val r = max(4, floor(h / lh).toInt())
+        val aw = w - paddingLeft - paddingRight
+        val ah = h - paddingTop - paddingBottom
+        if (aw <= 0 || ah <= 0 || cw <= 0f || lh <= 0f) return
+        val c = max(16, floor(aw / cw).toInt())
+        val r = max(4, floor(ah / lh).toInt())
         if (c != vt.cols || r != vt.rows) {
             vt.resize(c, r)
             off = 0
@@ -72,6 +77,13 @@ class TermView(ctx: Context) : View(ctx) {
     }
 
     override fun onDraw(cv: Canvas) {
+        cv.save()
+        cv.translate(paddingLeft.toFloat(), paddingTop.toFloat())
+        grid(cv)
+        cv.restore()
+    }
+
+    private fun grid(cv: Canvas) {
         val s = vt.s
         val nb = s.back.size
         for (k in 0 until s.rows) {

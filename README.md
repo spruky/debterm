@@ -10,9 +10,13 @@ app is a text grid and a `bash --login` inside a real Debian bookworm rootfs.
 - own VT/xterm emulator + `Canvas` renderer: scrollback, alt screen, 256 colour,
   truecolour, UTF-8
 
-Built for **arm64-v8a only** and `targetSdk 28` on purpose — Android 10+ refuses
-to `exec()` files in an app's data directory when targetSdk is 29 or higher,
-which would kill every binary in the rootfs. Termux pins 28 for the same reason.
+Built for **arm64-v8a only**. Android 10+ refuses to `exec()` files in an app's
+data directory, but that restriction is never hit here: the only file this app
+execs is `libproot.so` in `nativeLibraryDir`, and proot runs every guest binary
+by handing it to its ptrace loader, which *maps* the ELF instead of exec'ing it.
+So the app targets a current SDK (35) and Play Protect has nothing to complain
+about — the same approach Winlator and tiny_container take. Termux has to pin
+targetSdk 28 only because it execs its data directory directly.
 
 ## Install
 

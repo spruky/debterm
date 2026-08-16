@@ -21,6 +21,9 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
+      - name: sdk 35
+        run: yes | sdkmanager --install "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
       # proot, its ptrace loader and libtalloc come from the Termux apt repo and
       # land in jniLibs as lib*.so, because nativeLibraryDir is the only place an
       # app is allowed to exec from.
@@ -105,12 +108,18 @@ jobs:
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
           cp app/build/outputs/apk/release/app-release.apk debterm.apk
-          ls -lh debterm.apk
+          # Same code at targetSdk 28, in case a device still refuses to exec
+          # under a modern target. Same package name, so it replaces the other.
+          ./gradlew :app:assembleRelease --no-daemon -Pdebterm.targetSdk=28
+          cp app/build/outputs/apk/release/app-release.apk debterm-sdk28.apk
+          ls -lh debterm.apk debterm-sdk28.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: debterm-apk
-          path: debterm.apk
+          path: |
+            debterm.apk
+            debterm-sdk28.apk
           if-no-files-found: error
 
       - name: release
@@ -118,7 +127,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eux
-          gh release create "v1.0.${{ github.run_number }}" debterm.apk \
+          gh release create "v1.0.${{ github.run_number }}" debterm.apk debterm-sdk28.apk \
             --title "debterm v1.0.${{ github.run_number }}" \
-            --notes "Debian bookworm terminal, arm64-v8a. Install the APK and launch; the first start unpacks the rootfs." \
+            --notes "Debian bookworm terminal, arm64-v8a. Install debterm.apk; use debterm-sdk28.apk only if the first one cannot exec." \
             --latest

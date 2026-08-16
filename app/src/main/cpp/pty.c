@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <termios.h>
@@ -72,6 +73,9 @@ Java_io_spruky_debterm_Pty_start(JNIEnv *e, jobject self, jstring jcmd, jobjectA
         signal(SIGPIPE, SIG_DFL);
         signal(SIGTTOU, SIG_IGN);
         execve(cmd, argv, envp);
+        // The pty is already stdout/stderr, so say why on the screen the user is
+        // looking at instead of dying silently.
+        dprintf(2, "\r\nexecve %s: %s\r\n", cmd, strerror(errno));
         _exit(127);
     }
 

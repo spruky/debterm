@@ -6,17 +6,19 @@ plugins {
 
 android {
     namespace = "io.spruky.debterm"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "io.spruky.debterm"
         minSdk = 24
-        // MUST stay <= 28: Android 10+ forbids exec() of files in the app's data
-        // dir for targetSdk >= 29, which would kill every binary in the rootfs.
-        // This is the same reason Termux pins 28.
-        targetSdk = 28
-        versionCode = 1
-        versionName = "1.0"
+        // 35 is safe even though Android 10+ forbids exec() of files in the app's
+        // data dir: the only thing this app execs is libproot.so out of
+        // nativeLibraryDir, and proot hands every guest binary to its ptrace
+        // loader, which maps it instead of exec'ing it. Termux needs 28 because
+        // it execs its data dir directly; we never do.
+        targetSdk = (findProperty("debterm.targetSdk") as String?)?.toInt() ?: 35
+        versionCode = 2
+        versionName = "1.1"
         ndk { abiFilters += "arm64-v8a" }
     }
 
