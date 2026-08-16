@@ -35,7 +35,7 @@ jobs:
           W=$(mktemp -d)
           cd "$W"
           curl -fsSL "$M/dists/stable/main/binary-aarch64/Packages" -o P
-          for pkg in proot libtalloc; do
+          for pkg in proot libtalloc libandroid-shmem; do
             f=$(awk -v RS='' -v p="Package: $pkg" 'index($0, p "\n") == 1 {print}' P | awk '/^Filename:/{print $2; exit}')
             test -n "$f"
             curl -fsSL "$M/$f" -o "$pkg.deb"
@@ -47,13 +47,25 @@ jobs:
           done
           U=x/proot/data/data/com.termux/files/usr
           T=x/libtalloc/data/data/com.termux/files/usr
-          cp    "$U/bin/proot"             "$D/libproot.so"
-          cp    "$U/libexec/proot/loader"  "$D/libloader.so"
+          S=x/libandroid-shmem/data/data/com.termux/files/usr
+          cp    "$U/bin/proot"              "$D/libproot.so"
+          cp    "$U/libexec/proot/loader"   "$D/libloader.so"
           cp    "$U/libexec/proot/loader32" "$D/libloader32.so" || true
-          cp -L "$T/lib/libtalloc.so.2"    "$D/libtalloc.so"
+          cp -L "$T/lib/libtalloc.so.2"     "$D/libtalloc.so"
+          cp -L "$S/lib/libandroid-shmem.so" "$D/libshmem.so"
+          # Every DT_NEEDED must be either a platform library or a file we ship,
+          # and the soname has to end in .so or the installer drops it.
           patchelf --replace-needed libtalloc.so.2 libtalloc.so "$D/libproot.so"
+          patchelf --replace-needed libandroid-shmem.so libshmem.so "$D/libproot.so"
           patchelf --set-rpath '$ORIGIN' "$D/libproot.so"
           chmod 755 "$D"/*.so
+          for n in $(readelf -d "$D/libproot.so" | awk -F'[][]' '/NEEDED/{print $2}'); do
+            case "$n" in
+              libc.so|libdl.so|libm.so|liblog.so|libandroid.so) ;;
+              *) test -f "$D/$n" || { echo "unshipped dependency: $n"; exit 1; } ;;
+            esac
+          done
+          readelf -d "$D/libproot.so" | grep -E 'NEEDED|RUNPATH'
           ls -l "$D"
 
       # Built straight with NDK clang: no CMake, no externalNativeBuild, no
